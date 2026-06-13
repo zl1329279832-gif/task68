@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: changpian-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changpian123}
+      MYSQL_DATABASE: huaijiuchangpianshoumai
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tomcat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: changpian-tomcat
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # 传给 config-prod.properties 中的 ${MYSQL_ROOT_PASSWORD}
+      CATALINA_OPTS: >-
+        -Dupload.path=/data/upload
+        -Djdbc_url=jdbc:mysql://mysql:3306/huaijiuchangpianshoumai?useUnicode=true&characterEncoding=UTF-8&tinyInt1isBit=false&useSSL=false
+        -Djdbc_username=root
+        -Djdbc_password=${MYSQL_ROOT_PASSWORD:-changpian123}
+    ports:
+      - "8080:8080"
+    volumes:
+      # 命名 volume 持久化用户上传文件，热部署不丢失
+      - upload-data:/data/upload
+
+volumes:
+  mysql-data:
+    driver: local
+  upload-data:
+    driver: local

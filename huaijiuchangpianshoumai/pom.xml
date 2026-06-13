@@ -294,6 +294,20 @@
     </dependencies>
 
 
+    <!--
+      ===================== 前端打包顺序（重要） =====================
+      WAR 内含两个前端：
+        1. webapp/front/  — 纯静态 HTML/JS/CSS，无需构建，Maven 直接打包。
+        2. webapp/admin/  — Vue CLI 项目，必须在 mvn package 之前先构建:
+             cd src/main/webapp/admin
+             npm install   (或 cnpm install)
+             npm run build (生成 dist/ 目录)
+        然后再执行 mvn clean package [-Pprod]，确保 admin/dist 是最新的。
+        如果跳过 npm build，WAR 里的 admin/dist 会是上次残留的过期产物。
+      CI 流水线已按此顺序编排，参见 .github/workflows/ci.yml。
+      ================================================================
+    -->
+
     <build>
         <!-- 项目访问名称 -->
         <finalName>huaijiuchangpianshoumai</finalName>
@@ -306,6 +320,69 @@
                     <target>1.7</target>
                 </configuration>
             </plugin>
+
+            <!-- WAR 打包：排除 admin 源码，只保留 admin/dist -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>3.3.2</version>
+                <configuration>
+                    <warSourceExcludes>
+                        admin/src/**,
+                        admin/node_modules/**,
+                        admin/package.json,
+                        admin/package-lock.json,
+                        admin/babel.config.js,
+                        admin/vue.config.js,
+                        admin/*.bat,
+                        upload/**
+                    </warSourceExcludes>
+                </configuration>
+            </plugin>
+
+            <!-- SpotBugs：只扫描配置类，可选执行 mvn spotbugs:check -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.7.3.6</version>
+                <configuration>
+                    <includeFilterFile>src/main/spotbugs/include-filter.xml</includeFilterFile>
+                    <effort>Max</effort>
+                    <threshold>Medium</threshold>
+                    <failOnError>false</failOnError>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+
+    <!-- ==================== Maven Profiles ==================== -->
+    <profiles>
+        <!-- dev：本地 Tomcat 开发，默认激活 -->
+        <profile>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <!-- 使用 src/main/resources/config.properties（localhost MySQL + catalina.base/upload-data） -->
+        </profile>
+
+        <!-- prod：Docker / 生产环境 -->
+        <profile>
+            <id>prod</id>
+            <build>
+                <resources>
+                    <!-- 排除 dev 的 config.properties，替换为 prod 版本 -->
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <excludes>
+                            <exclude>config.properties</exclude>
+                        </excludes>
+                    </resource>
+                    <resource>
+                        <directory>src/main/resources-prod</directory>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- 只扫描配置类和文件上传相关类 -->
+    <Match>
+        <Or>
+            <Class name="com.config.MyMetaObjectHandler"/>
+            <Class name="com.controller.FileController"/>
+            <Class name="com.controller.CommonController"/>
+            <Class name="com.controller.ConfigController"/>
+            <Class name="com.interceptor.AuthorizationInterceptor"/>
+        </Or>
+    </Match>
+</FindBugsFilter>

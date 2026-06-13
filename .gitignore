@@ -1,0 +1,40 @@
+# === Build artifacts ===
+target/
+*.war
+*.jar
+*.class
+
+# === Maven ===
+.mvn/
+mvnw
+mvnw.cmd
+
+# === IDE ===
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.classpath
+.project
+.vscode/
+*.swp
+*.swo
+
+# === Node / Frontend ===
+node_modules/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Runtime uploads (不要提交运行时上传的文件) ===
+huaijiuchangpianshoumai/src/main/webapp/upload/*.jpg
+huaijiuchangpianshoumai/src/main/webapp/upload/*.png
+huaijiuchangpianshoumai/src/main/webapp/upload/*.mp3
+huaijiuchangpianshoumai/src/main/webapp/upload/*.mp4
+
+# === Logs ===
+*.log
+logs/

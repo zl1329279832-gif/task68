@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: huaijiuchangpianshoumai
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 8
+          cache: maven
+
+      - name: Set up Node 16
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16
+          cache: npm
+          cache-dependency-path: huaijiuchangpianshoumai/src/main/webapp/admin/package-lock.json
+
+      # ===== 步骤 1: 先构建 admin 前端（生成最新 dist） =====
+      - name: Build admin frontend
+        working-directory: huaijiuchangpianshoumai/src/main/webapp/admin
+        run: |
+          npm install
+          npm run build
+
+      # ===== 步骤 2: Maven 编译 + 打 WAR =====
+      # front/ 是纯静态文件，无需构建，直接由 maven-war-plugin 打入 WAR。
+      # admin/dist 已在上一步更新，maven-war-plugin 排除了 admin 源码。
+      - name: Maven compile & package
+        run: mvn clean package -Pprod -DskipTests -B
+
+      # ===== 步骤 3: 基础编译检查 =====
+      - name: Verify compilation
+        run: mvn verify -DskipTests -B -Pprod
+
+      # ===== 步骤 4 (可选): SpotBugs 只扫描配置类 =====
+      - name: SpotBugs analysis (config classes only)
+        run: mvn spotbugs:check -B || true
+
+      - name: Upload WAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: huaijiuchangpianshoumai.war
+          path: huaijiuchangpianshoumai/target/huaijiuchangpianshoumai.war
+          retention-days: 7

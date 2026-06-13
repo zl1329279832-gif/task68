@@ -15,6 +15,7 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.ResourceUtils;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -47,6 +48,9 @@ public class CommonController{
 	@Autowired
 	private ConfigService configService;
 	
+	@Value("${upload.path}")
+	private String uploadPath;
+
 	private static AipFace client = null;
 	
 	private static String BAIDU_DITU_AK = null;
@@ -86,8 +90,8 @@ public class CommonController{
 		}
 		JSONObject res = null;
 		try {
-			File file1 = new File(request.getSession().getServletContext().getRealPath("/upload")+"/"+face1);
-			File file2 = new File(request.getSession().getServletContext().getRealPath("/upload")+"/"+face2);
+			File file1 = new File(uploadPath + "/" + face1);
+			File file2 = new File(uploadPath + "/" + face2);
 			String img1 = Base64Util.encode(FileUtil.FileToByte(file1));
 			String img2 = Base64Util.encode(FileUtil.FileToByte(file2));
 			MatchRequest req1 = new MatchRequest(img1, "BASE64");

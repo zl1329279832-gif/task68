@@ -11,6 +11,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,6 +31,9 @@ import com.utils.R;
 @RequestMapping("file")
 @SuppressWarnings({"unchecked","rawtypes"})
 public class FileController{
+	@Value("${upload.path}")
+	private String uploadPath;
+
 	@Autowired
     private ConfigService configService;
 	/**
@@ -42,7 +46,11 @@ public class FileController{
 		}
 		String fileExt = file.getOriginalFilename().substring(file.getOriginalFilename().lastIndexOf(".")+1);
 		String fileName = new Date().getTime()+"."+fileExt;
-		File dest = new File(request.getSession().getServletContext().getRealPath("/upload")+"/"+fileName);
+		File uploadDir = new File(uploadPath);
+		if (!uploadDir.exists()) {
+			uploadDir.mkdirs();
+		}
+		File dest = new File(uploadPath + "/" + fileName);
 		file.transferTo(dest);
 		if(StringUtils.isNotBlank(type) && type.equals("1")) {
 			ConfigEntity configEntity = configService.selectOne(new EntityWrapper<ConfigEntity>().eq("name", "faceFile"));
@@ -65,7 +73,7 @@ public class FileController{
 	@RequestMapping("/download")
 	public void download(@RequestParam String fileName, HttpServletRequest request, HttpServletResponse response) {
 		try {
-			File file = new File(request.getSession().getServletContext().getRealPath("/upload")+"/"+fileName);
+			File file = new File(uploadPath + "/" + fileName);
 			if (file.exists()) {
 				response.reset();
 				response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName+"\"");
