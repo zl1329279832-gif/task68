@@ -18,4 +18,9 @@ public interface ChangpianDao extends BaseMapper<ChangpianEntity> {
 
    List<ChangpianView> selectListView(Pagination page,@Param("params")Map<String,Object> params);
 
+   /**
+    * 悲观锁查询商品（SELECT ... FOR UPDATE），防止并发超卖
+    */
+   ChangpianEntity selectForUpdate(@Param("id") Integer id);
+
 }

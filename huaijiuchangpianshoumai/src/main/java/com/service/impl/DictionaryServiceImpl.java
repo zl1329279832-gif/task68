@@ -1,5 +1,6 @@
 package com.service.impl;
 
+import com.baomidou.mybatisplus.mapper.EntityWrapper;
 import com.utils.StringUtil;
 import org.springframework.stereotype.Service;
 import java.lang.reflect.Field;
@@ -23,6 +24,12 @@ import com.entity.view.DictionaryView;
 @Service("dictionaryService")
 @Transactional
 public class DictionaryServiceImpl extends ServiceImpl<DictionaryDao, DictionaryEntity> implements DictionaryService {
+
+    /**
+     * 向后兼容的默认阈值：等级1最低积分、等级2最低积分、等级3最低积分
+     * 当字典表（dic_code='huiyuandengji_threshold'）未配置时使用
+     */
+    private static final double[] DEFAULT_THRESHOLDS = {0.0, 10000.0, 100000.0, 1000000.0};
 
     @Override
     public PageUtils queryPage(Map<String,Object> params) {
@@ -124,6 +131,50 @@ public class DictionaryServiceImpl extends ServiceImpl<DictionaryDao, Dictionary
         }
 
         return false;
+    }
+
+    /**
+     * 获取指定会员等级的最低积分阈值
+     * 从字典表 dic_code='huiyuandengji_threshold' 读取，code_index=等级编号，beizhu=阈值
+     * 若字典表未配置，回退到兼容默认值
+     */
+    @Override
+    public double getMembershipThreshold(int tier) {
+        try {
+            DictionaryEntity entity = this.selectOne(
+                new EntityWrapper<DictionaryEntity>()
+                    .eq("dic_code", "huiyuandengji_threshold")
+                    .eq("code_index", tier)
+            );
+            if (entity != null && StringUtil.isNotEmpty(entity.getBeizhu())) {
+                return Double.parseDouble(entity.getBeizhu());
+            }
+        } catch (Exception e) {
+            // 字典表查询失败，使用默认值
+        }
+        // 回退默认值
+        if (tier >= 0 && tier < DEFAULT_THRESHOLDS.length) {
+            return DEFAULT_THRESHOLDS[tier];
+        }
+        return Double.MAX_VALUE;
+    }
+
+    /**
+     * 根据累计积分计算会员等级
+     * 从字典表读取各等级阈值，未配置时使用默认值（10000 / 100000 / 1000000）
+     */
+    @Override
+    public int calculateMembershipTier(double totalPoints) {
+        // 从高到低检查，找到第一个满足条件的等级
+        // 先尝试从字典表读取最多等级数（默认支持3级）
+        int maxTier = 3;
+        for (int tier = maxTier; tier >= 1; tier--) {
+            double threshold = getMembershipThreshold(tier);
+            if (totalPoints >= threshold) {
+                return tier;
+            }
+        }
+        return 1;
     }
 
 }

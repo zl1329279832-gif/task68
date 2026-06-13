@@ -368,111 +368,23 @@ private ChangpianCommentbackService changpianCommentbackService;
     }
     /**
      * 添加订单
+     * 整段事务化（在 Service 层），悲观锁防超卖，会员等级阈值可配置
      */
     @RequestMapping("/order")
     public R add(@RequestParam Map<String, Object> params, HttpServletRequest request){
         logger.debug("order方法:,,Controller:{},,params:{}",this.getClass().getName(),params.toString());
-        String changpianOrderUuidNumber = String.valueOf(new Date().getTime());
 
-        //获取当前登录用户的id
+        // 获取当前登录用户的id
         Integer userId = (Integer) request.getSession().getAttribute("userId");
         Integer addressId = Integer.valueOf(String.valueOf(params.get("addressId")));
-
-        Integer changpianOrderPaymentTypes = Integer.valueOf(String.valueOf(params.get("changpianOrderPaymentTypes")));//支付类型
+        Integer changpianOrderPaymentTypes = Integer.valueOf(String.valueOf(params.get("changpianOrderPaymentTypes")));
 
         String data = String.valueOf(params.get("changpians"));
         JSONArray jsonArray = JSON.parseArray(data);
         List<Map> changpians = JSON.parseObject(jsonArray.toString(), List.class);
 
-        //获取当前登录用户的个人信息
-        YonghuEntity yonghuEntity = yonghuService.selectById(userId);
-
-        //当前订单表
-        List<ChangpianOrderEntity> changpianOrderList = new ArrayList<>();
-        //商品表
-        List<ChangpianEntity> changpianList = new ArrayList<>();
-        //购物车ids
-        List<Integer> cartIds = new ArrayList<>();
-
-        BigDecimal zhekou = new BigDecimal(1.0);
-        // 获取折扣
-        Wrapper<DictionaryEntity> dictionary = new EntityWrapper<DictionaryEntity>()
-                .eq("dic_code", "huiyuandengji_types")
-                .eq("dic_name", "会员等级类型")
-                .eq("code_index", yonghuEntity.getHuiyuandengjiTypes())
-                ;
-        DictionaryEntity dictionaryEntity = dictionaryService.selectOne(dictionary);
-        if(dictionaryEntity != null ){
-            zhekou = BigDecimal.valueOf(Double.valueOf(dictionaryEntity.getBeizhu()));
-        }
-
-        //循环取出需要的数据
-        for (Map<String, Object> map : changpians) {
-           //取值
-            Integer changpianId = Integer.valueOf(String.valueOf(map.get("changpianId")));//商品id
-            Integer buyNumber = Integer.valueOf(String.valueOf(map.get("buyNumber")));//购买数量
-            ChangpianEntity changpianEntity = changpianService.selectById(changpianId);//购买的商品
-            String id = String.valueOf(map.get("id"));
-            if(StringUtil.isNotEmpty(id))
-                cartIds.add(Integer.valueOf(id));
-
-            //判断商品的库存是否足够
-            if(changpianEntity.getChangpianKucunNumber() < buyNumber){
-                //商品库存不足直接返回
-                return R.error(changpianEntity.getChangpianName()+"的库存不足");
-            }else{
-                //商品库存充足就减库存
-                changpianEntity.setChangpianKucunNumber(changpianEntity.getChangpianKucunNumber() - buyNumber);
-            }
-
-            //订单信息表增加数据
-            ChangpianOrderEntity changpianOrderEntity = new ChangpianOrderEntity<>();
-
-            //赋值订单信息
-            changpianOrderEntity.setChangpianOrderUuidNumber(changpianOrderUuidNumber);//订单号
-            changpianOrderEntity.setAddressId(addressId);//送货地址
-            changpianOrderEntity.setChangpianId(changpianId);//商品
-            changpianOrderEntity.setYonghuId(userId);//用户
-            changpianOrderEntity.setBuyNumber(buyNumber);//购买数量 ？？？？？？
-            changpianOrderEntity.setChangpianOrderTypes(3);//订单类型
-            changpianOrderEntity.setChangpianOrderPaymentTypes(changpianOrderPaymentTypes);//支付类型
-            changpianOrderEntity.setInsertTime(new Date());//订单创建时间
-            changpianOrderEntity.setCreateTime(new Date());//创建时间
-
-            //判断是什么支付方式 1代表余额 2代表积分
-            if(changpianOrderPaymentTypes == 1){//余额支付
-                //计算金额
-                Double money = new BigDecimal(changpianEntity.getChangpianNewMoney()).multiply(new BigDecimal(buyNumber)).multiply(zhekou).doubleValue();
-
-                if(yonghuEntity.getNewMoney() - money <0 ){
-                    return R.error("余额不足,请充值！！！");
-                }else{
-                    //计算所获得积分
-                    Double buyJifen =0.0;
-                        buyJifen = new BigDecimal(changpianEntity.getChangpianPrice()).multiply(new BigDecimal(buyNumber)).doubleValue();
-                    yonghuEntity.setYonghuSumJifen(yonghuEntity.getYonghuSumJifen() + buyJifen); //设置总积分
-                        if(yonghuEntity.getYonghuSumJifen()  < 10000)
-                            yonghuEntity.setHuiyuandengjiTypes(1);
-                        else if(yonghuEntity.getYonghuSumJifen()  < 100000)
-                            yonghuEntity.setHuiyuandengjiTypes(2);
-                        else if(yonghuEntity.getYonghuSumJifen()  < 1000000)
-                            yonghuEntity.setHuiyuandengjiTypes(3);
-
-
-                    changpianOrderEntity.setChangpianOrderTruePrice(money);
-                    yonghuEntity.setNewMoney(yonghuEntity.getNewMoney() - money);
-                }
-            }
-            changpianOrderList.add(changpianOrderEntity);
-            changpianList.add(changpianEntity);
-
-        }
-        changpianOrderService.insertBatch(changpianOrderList);
-        changpianService.updateBatchById(changpianList);
-        yonghuService.updateById(yonghuEntity);
-        if(cartIds != null && cartIds.size()>0)
-            cartService.deleteBatchIds(cartIds);
-        return R.ok();
+        // 委托给 Service 层（单事务，悲观锁防超卖）
+        return changpianOrderService.placeOrder(userId, addressId, changpianOrderPaymentTypes, changpians, request);
     }
 
 
@@ -487,91 +399,25 @@ private ChangpianCommentbackService changpianCommentbackService;
 
     /**
     * 退款
+    * 事务化回滚：余额、积分、会员等级、库存、订单状态一起回滚
+    * 只允许合法前置状态（已支付 / 已发货）
     */
     @RequestMapping("/refund")
     public R refund(Integer id, HttpServletRequest request){
         logger.debug("refund方法:,,Controller:{},,id:{}",this.getClass().getName(),id);
-        String role = String.valueOf(request.getSession().getAttribute("role"));
-
-            ChangpianOrderEntity changpianOrder = changpianOrderService.selectById(id);
-            Integer buyNumber = changpianOrder.getBuyNumber();
-            Integer changpianOrderPaymentTypes = changpianOrder.getChangpianOrderPaymentTypes();
-            Integer changpianId = changpianOrder.getChangpianId();
-            if(changpianId == null)
-                return R.error(511,"查不到该商品");
-            ChangpianEntity changpianEntity = changpianService.selectById(changpianId);
-            if(changpianEntity == null)
-                return R.error(511,"查不到该商品");
-            Double changpianNewMoney = changpianEntity.getChangpianNewMoney();
-            if(changpianNewMoney == null)
-                return R.error(511,"商品价格不能为空");
-
-            Integer userId = (Integer) request.getSession().getAttribute("userId");
-            YonghuEntity yonghuEntity = yonghuService.selectById(userId);
-            if(yonghuEntity == null)
-                return R.error(511,"用户不能为空");
-            if(yonghuEntity.getNewMoney() == null)
-                return R.error(511,"用户金额不能为空");
-
-            Double zhekou = 1.0;
-            // 获取折扣
-            Wrapper<DictionaryEntity> dictionary = new EntityWrapper<DictionaryEntity>()
-                    .eq("dic_code", "huiyuandengji_types")
-                    .eq("dic_name", "会员等级类型")
-                    .eq("code_index", yonghuEntity.getHuiyuandengjiTypes())
-                    ;
-            DictionaryEntity dictionaryEntity = dictionaryService.selectOne(dictionary);
-            if(dictionaryEntity != null ){
-                zhekou = Double.valueOf(dictionaryEntity.getBeizhu());
-            }
-
-
-            //判断是什么支付方式 1代表余额 2代表积分
-            if(changpianOrderPaymentTypes == 1){//余额支付
-                //计算金额
-                Double money = changpianEntity.getChangpianNewMoney() * buyNumber  * zhekou;
-                //计算所获得积分
-                Double buyJifen = 0.0;
-                buyJifen = new BigDecimal(changpianEntity.getChangpianPrice()).multiply(new BigDecimal(buyNumber)).doubleValue();
-                yonghuEntity.setYonghuSumJifen(yonghuEntity.getYonghuSumJifen() - buyJifen); //设置总积分
-
-                if(yonghuEntity.getYonghuSumJifen()  < 10000)
-                    yonghuEntity.setHuiyuandengjiTypes(1);
-                else if(yonghuEntity.getYonghuSumJifen()  < 100000)
-                    yonghuEntity.setHuiyuandengjiTypes(2);
-                else if(yonghuEntity.getYonghuSumJifen()  < 1000000)
-                    yonghuEntity.setHuiyuandengjiTypes(3);
-
-            }
-
-            changpianEntity.setChangpianKucunNumber(changpianEntity.getChangpianKucunNumber() + buyNumber);
-
-
-
-            changpianOrder.setChangpianOrderTypes(2);//设置订单状态为退款
-            changpianOrderService.updateById(changpianOrder);//根据id更新
-            yonghuService.updateById(yonghuEntity);//更新用户信息
-            changpianService.updateById(changpianEntity);//更新订单中商品的信息
-            return R.ok();
+        Integer userId = (Integer) request.getSession().getAttribute("userId");
+        return changpianOrderService.refundOrder(id, userId, request);
     }
 
 
     /**
      * 发货
+     * 仅允许"已支付/待发货(3)"状态执行发货
      */
     @RequestMapping("/deliver")
     public R deliver(Integer id ,String changpianOrderCourierNumber, String changpianOrderCourierName){
-        logger.debug("refund:,,Controller:{},,ids:{}",this.getClass().getName(),id.toString());
-        ChangpianOrderEntity  changpianOrderEntity = new  ChangpianOrderEntity();;
-        changpianOrderEntity.setId(id);
-        changpianOrderEntity.setChangpianOrderTypes(4);
-        changpianOrderEntity.setChangpianOrderCourierNumber(changpianOrderCourierNumber);
-        changpianOrderEntity.setChangpianOrderCourierName(changpianOrderCourierName);
-        boolean b =  changpianOrderService.updateById( changpianOrderEntity);
-        if(!b){
-            return R.error("发货出错");
-        }
-        return R.ok();
+        logger.debug("deliver:,,Controller:{},,id:{}",this.getClass().getName(),id.toString());
+        return changpianOrderService.deliverOrder(id, changpianOrderCourierNumber, changpianOrderCourierName);
     }
 
 
@@ -584,18 +430,12 @@ private ChangpianCommentbackService changpianCommentbackService;
 
     /**
      * 收货
+     * 仅允许"已发货(4)"状态执行收货
      */
     @RequestMapping("/receiving")
     public R receiving(Integer id){
-        logger.debug("refund:,,Controller:{},,ids:{}",this.getClass().getName(),id.toString());
-        ChangpianOrderEntity  changpianOrderEntity = new  ChangpianOrderEntity();
-        changpianOrderEntity.setId(id);
-        changpianOrderEntity.setChangpianOrderTypes(5);
-        boolean b =  changpianOrderService.updateById( changpianOrderEntity);
-        if(!b){
-            return R.error("收货出错");
-        }
-        return R.ok();
+        logger.debug("receiving:,,Controller:{},,id:{}",this.getClass().getName(),id.toString());
+        return changpianOrderService.receiveOrder(id);
     }
 
 

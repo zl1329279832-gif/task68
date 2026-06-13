@@ -21,4 +21,18 @@ public interface DictionaryService extends IService<DictionaryEntity> {
       * @param obj
       */
      void dictionaryConvert(Object obj, HttpServletRequest request);
+
+     /**
+      * 获取会员等级所需的最低积分阈值
+      * @param tier 等级编号（1, 2, 3...）
+      * @return 该等级的最低积分要求；若字典表未配置则返回兼容默认值
+      */
+     double getMembershipThreshold(int tier);
+
+     /**
+      * 根据当前累计积分计算应属会员等级
+      * @param totalPoints 用户当前总积分
+      * @return 会员等级编号
+      */
+     int calculateMembershipTier(double totalPoints);
 }

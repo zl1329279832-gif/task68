@@ -1,0 +1,77 @@
+-- ============================================================
+-- curl 验证说明
+-- ============================================================
+-- 假设应用部署在 http://localhost:8080/huaijiuchangpianshoumai
+-- 所有接口需要先在 session 中登录（获取 token），下面用 $TOKEN 代替
+--
+-- ==============  1. 并发下单验证  ==============
+-- 准备：在 changpian 表中设 id=1 的库存为 10
+--   UPDATE changpian SET changpian_kucun_number = 10 WHERE id = 1;
+--
+-- 打开 2 个终端，几乎同时执行以下命令（模拟并发）：
+--
+-- 终端1：
+curl -X POST "http://localhost:8080/huaijiuchangpianshoumai/changpianOrder/order" \
+  -H "token: $TOKEN" \
+  -d "addressId=1" \
+  -d "changpianOrderPaymentTypes=1" \
+  -d 'changpians=[{"changpianId":1,"buyNumber":6}]'
+--
+-- 终端2（几乎同时）：
+curl -X POST "http://localhost:8080/huaijiuchangpianshoumai/changpianOrder/order" \
+  -H "token: $TOKEN" \
+  -d "addressId=1" \
+  -d "changpianOrderPaymentTypes=1" \
+  -d 'changpians=[{"changpianId":1,"buyNumber":6}]'
+--
+-- 预期结果：
+--   一个返回 {"code":0}（成功），另一个返回库存不足的错误
+--   （总需求 12 > 库存 10，悲观锁保证只有一个能扣成功）
+--
+-- 验证：
+--   SELECT changpian_kucun_number FROM changpian WHERE id = 1;
+--   应该 >= 0，不应出现负数（不超卖）
+--
+--
+-- ==============  2. 退款一致性验证  ==============
+-- 先查下单后的用户状态：
+--   SELECT new_money, yonghu_sum_jifen, huiyuandengji_types FROM yonghu WHERE id = 1;
+--
+-- 执行退款（假设订单 id = 123）：
+curl -X POST "http://localhost:8080/huaijiuchangpianshoumai/changpianOrder/refund?id=123" \
+  -H "token: $TOKEN"
+--
+-- 预期结果：{"code":0}
+--
+-- 验证全部字段一致回滚：
+--   1) 余额已退回：
+--      SELECT new_money FROM yonghu WHERE id = 1;
+--      （应等于下单前余额）
+--   2) 积分已扣回：
+--      SELECT yonghu_sum_jifen FROM yonghu WHERE id = 1;
+--      （应等于下单前积分）
+--   3) 会员等级已重算：
+--      SELECT huiyuandengji_types FROM yonghu WHERE id = 1;
+--   4) 库存已恢复：
+--      SELECT changpian_kucun_number FROM changpian WHERE id = 1;
+--      （应等于下单前库存）
+--   5) 订单状态为退款：
+--      SELECT changpian_order_types FROM changpian_order WHERE id = 123;
+--      （应为 2）
+--
+--
+-- ==============  3. 状态机守卫验证  ==============
+-- 对"已支付(3)"的订单尝试收货（应被拒绝）：
+curl -X POST "http://localhost:8080/huaijiuchangpianshoumai/changpianOrder/receiving?id=123" \
+  -H "token: $TOKEN"
+-- 预期：返回错误"当前订单状态不允许收货"
+--
+-- 对"已支付(3)"的订单发货（应成功）：
+curl -X POST "http://localhost:8080/huaijiuchangpianshoumai/changpianOrder/deliver?id=123&changpianOrderCourierNumber=SF123&changpianOrderCourierName=顺丰" \
+  -H "token: $TOKEN"
+-- 预期：{"code":0}
+--
+-- 再对同一个订单发货（应被拒绝，因为已经变成"已发货(4)"）：
+curl -X POST "http://localhost:8080/huaijiuchangpianshoumai/changpianOrder/deliver?id=123&changpianOrderCourierNumber=SF456&changpianOrderCourierName=顺丰" \
+  -H "token: $TOKEN"
+-- 预期：返回错误"当前订单状态不允许发货"
