@@ -20,7 +20,38 @@
         <aspectjweaver.version>1.8.8</aspectjweaver.version>
         <fileupload.version>1.3.1</fileupload.version>
         <jstl.version>1.2</jstl.version>
+        <skip.frontend>false</skip.frontend>
     </properties>
+
+    <!-- ============================================================
+         Maven Profiles: dev (默认) / prod
+         - dev:  本地 Tomcat 开发, 上传目录在 webapp/upload, JDBC 指向 127.0.0.1
+         - prod: Docker 生产环境, 上传目录 /data/upload, JDBC 指向 mysql 容器
+         用法: mvn package -Pprod -DskipTests
+         ============================================================ -->
+    <profiles>
+        <profile>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <file.upload.dir>${project.basedir}/src/main/webapp/upload</file.upload.dir>
+                <jdbc.url><![CDATA[jdbc:mysql://127.0.0.1:3306/huaijiuchangpianshoumai?useUnicode=true&characterEncoding=UTF-8&tinyInt1isBit=false&useSSL=false]]></jdbc.url>
+                <jdbc.username>root</jdbc.username>
+                <jdbc.password>123456</jdbc.password>
+            </properties>
+        </profile>
+        <profile>
+            <id>prod</id>
+            <properties>
+                <file.upload.dir>/data/upload</file.upload.dir>
+                <jdbc.url><![CDATA[jdbc:mysql://mysql:3306/huaijiuchangpianshoumai?useUnicode=true&characterEncoding=UTF-8&tinyInt1isBit=false&useSSL=false]]></jdbc.url>
+                <jdbc.username>root</jdbc.username>
+                <jdbc.password>123456</jdbc.password>
+            </properties>
+        </profile>
+    </profiles>
 
     <dependencies>
         <!-- JUnit -->
@@ -297,6 +328,47 @@
     <build>
         <!-- 项目访问名称 -->
         <finalName>huaijiuchangpianshoumai</finalName>
+
+        <!--
+          ╔══════════════════════════════════════════════════════════╗
+          ║  前端打包顺序 (Maven build lifecycle)                     ║
+          ╠══════════════════════════════════════════════════════════╣
+          ║  1. clean         → 删除 target/ 和 admin/dist/          ║
+          ║  2. generate-     → frontend-maven-plugin:               ║
+          ║     resources        cd src/main/webapp/admin             ║
+          ║                     npm install && npm run build           ║
+          ║                     输出到 admin/dist/                     ║
+          ║  3. process-      → Maven resource filtering              ║
+          ║     resources        config.properties ← 注入 profile 值  ║
+          ║  4. compile       → Java 编译                             ║
+          ║  5. package       → maven-war-plugin 打包:                ║
+          ║                     webapp/ 整体 → WAR 根目录              ║
+          ║                     ├─ front/  → /front/  (纯静态,无构建) ║
+          ║                     ├─ admin/dist/ → /admin/ (Vue构建产物) ║
+          ║                     ├─ upload/ → /upload/  (dev种子文件)   ║
+          ║                     └─ WEB-INF/ → /WEB-INF/               ║
+          ║                                                           ║
+          ║  front/ 是纯 HTML/JS+Layui, 无构建步骤, 直接打包          ║
+          ║  admin/ 是 Vue 2 SPA, 必须 npm run build 产出 dist/      ║
+          ║  CI 加 -Dskip.frontend=true 可跳过前端构建加速编译检查    ║
+          ╚══════════════════════════════════════════════════════════╝
+        -->
+
+        <!-- Resource filtering: 仅对 config.properties 开启, 避免破坏 MyBatis mapper 中的 ${} -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>config.properties</include>
+                </includes>
+            </resource>
+        </resources>
+
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -305,6 +377,58 @@
                     <source>1.7</source>
                     <target>1.7</target>
                 </configuration>
+            </plugin>
+
+            <!-- 清理旧 admin dist, 确保每次 build 产出最新前端 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <filesets>
+                        <fileset>
+                            <directory>src/main/webapp/admin/dist</directory>
+                            <followSymlinks>false</followSymlinks>
+                        </fileset>
+                    </filesets>
+                </configuration>
+            </plugin>
+
+            <!-- Admin Vue 前端构建: npm install + npm run build -->
+            <!-- 跳: mvn package -Dskip.frontend=true -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>1.12.1</version>
+                <configuration>
+                    <workingDirectory>src/main/webapp/admin</workingDirectory>
+                    <skip>${skip.frontend}</skip>
+                    <!-- Node 14: node-sass@4.13 仅兼容 Node 14 -->
+                    <nodeVersion>v14.21.3</nodeVersion>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>npm-install</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>generate-resources</phase>
+                        <configuration>
+                            <arguments>install</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm-build</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>generate-resources</phase>
+                        <configuration>
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: maven
+
+      # ── Step 1: 编译检查 (跳过前端构建加速) ──
+      - name: Maven compile check
+        run: cd huaijiuchangpianshoumai && mvn compile -Pprod -Dskip.frontend=true -B
+
+      # ── Step 2: SpotBugs 静态分析 (仅扫描配置与文件上传相关类) ──
+      - name: SpotBugs scan (config classes)
+        run: |
+          cd huaijiuchangpianshoumai
+          mvn com.github.spotbugs:spotbugs-maven-plugin:3.0.6:check \
+            -Dspotbugs.includeFilterFile=spotbugs-filter.xml \
+            -Dskip.frontend=true -B \
+            || echo "::warning::SpotBugs found issues (non-blocking)"
+
+      # ── Step 3: 构建 WAR (prod profile, 跳过前端和测试) ──
+      - name: Build WAR (prod)
+        run: cd huaijiuchangpianshoumai && mvn package -Pprod -Dskip.frontend=true -B -DskipTests
+
+      # ── Step 4: 上传 WAR 产物 ──
+      - name: Upload WAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: huaijiuchangpianshoumai-war
+          path: huaijiuchangpianshoumai/target/huaijiuchangpianshoumai.war
+          retention-days: 30

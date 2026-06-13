@@ -1,0 +1,14 @@
+-- ============================================================
+-- 01-schema.sql — 数据库 Schema 与初始数据
+--
+-- 此文件需要从开发数据库手动导出:
+--   mysqldump -u root -p123456 huaijiuchangpianshoumai > docker/init-sql/01-schema.sql
+--
+-- 导出后请将本文件替换为实际的 dump 内容。
+-- Docker Compose 首次启动 MySQL 时会自动执行此目录下的所有 .sql 文件。
+-- ============================================================
+
+-- 占位: 请替换为实际的 mysqldump 输出
+-- CREATE DATABASE IF NOT EXISTS huaijiuchangpianshoumai;
+-- USE huaijiuchangpianshoumai;
+-- ... (实际表结构和数据)

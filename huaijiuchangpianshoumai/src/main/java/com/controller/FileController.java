@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Date;
 
+import javax.annotation.PostConstruct;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -11,6 +12,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,6 +34,25 @@ import com.utils.R;
 public class FileController{
 	@Autowired
     private ConfigService configService;
+
+	/**
+	 * 上传文件存储根目录，由 config.properties 中 file.upload.dir 注入。
+	 * dev 环境指向 webapp/upload，prod 环境指向外部数据卷 /data/upload。
+	 */
+	@Value("${file.upload.dir}")
+	private String uploadDir;
+
+	/**
+	 * 应用启动时自动创建上传目录（若不存在）
+	 */
+	@PostConstruct
+	public void init() {
+		File dir = new File(uploadDir);
+		if (!dir.exists()) {
+			dir.mkdirs();
+		}
+	}
+
 	/**
 	 * 上传文件
 	 */
@@ -42,7 +63,7 @@ public class FileController{
 		}
 		String fileExt = file.getOriginalFilename().substring(file.getOriginalFilename().lastIndexOf(".")+1);
 		String fileName = new Date().getTime()+"."+fileExt;
-		File dest = new File(request.getSession().getServletContext().getRealPath("/upload")+"/"+fileName);
+		File dest = new File(uploadDir+"/"+fileName);
 		file.transferTo(dest);
 		if(StringUtils.isNotBlank(type) && type.equals("1")) {
 			ConfigEntity configEntity = configService.selectOne(new EntityWrapper<ConfigEntity>().eq("name", "faceFile"));
@@ -57,7 +78,7 @@ public class FileController{
 		}
 		return R.ok().put("file", fileName);
 	}
-	
+
 	/**
 	 * 下载文件
 	 */
@@ -65,7 +86,7 @@ public class FileController{
 	@RequestMapping("/download")
 	public void download(@RequestParam String fileName, HttpServletRequest request, HttpServletResponse response) {
 		try {
-			File file = new File(request.getSession().getServletContext().getRealPath("/upload")+"/"+fileName);
+			File file = new File(uploadDir+"/"+fileName);
 			if (file.exists()) {
 				response.reset();
 				response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName+"\"");
@@ -79,5 +100,5 @@ public class FileController{
 			e.printStackTrace();
 		}
 	}
-	
+
 }

@@ -1,0 +1,30 @@
+# ── Build output ──
+target/
+
+# ── Admin frontend build artifacts ──
+# dist/ 由 frontend-maven-plugin (npm run build) 重新生成，不提交
+huaijiuchangpianshoumai/src/main/webapp/admin/dist/
+huaijiuchangpianshoumai/src/main/webapp/admin/node_modules/
+
+# ── Upload files (dev 环境用户上传的临时文件，不入库) ──
+huaijiuchangpianshoumai/src/main/webapp/upload/*.jpeg
+huaijiuchangpianshoumai/src/main/webapp/upload/*.jpg
+huaijiuchangpianshoumai/src/main/webapp/upload/*.mp3
+huaijiuchangpianshoumai/src/main/webapp/upload/*.mp4
+huaijiuchangpianshoumai/src/main/webapp/upload/*.rar
+huaijiuchangpianshoumai/src/main/webapp/upload/*.txt
+
+# ── IDE ──
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+*.class
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Logs ──
+*.log

@@ -1,0 +1,55 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────────────────────
+# 怀旧唱片售卖系统 — Docker Compose
+#
+# 使用前请先构建 prod WAR:
+#   mvn package -Pprod -Dskip.frontend=true -DskipTests
+#
+# 然后:
+#   docker-compose up --build -d
+#
+# 首次启动需导入数据库（init-sql 会自动执行）。
+# 上传的封面文件持久化在 upload_data named volume 中，
+# Tomcat 容器重启/重建不会丢失。
+# ─────────────────────────────────────────────────────────────
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: record-shop-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: huaijiuchangpianshoumai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/init-sql:/docker-entrypoint-initdb.d:ro
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=200
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tomcat:
+    build: .
+    container_name: record-shop-tomcat
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - upload_data:/data/upload
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    name: record-shop-mysql-data
+  upload_data:
+    name: record-shop-upload-data

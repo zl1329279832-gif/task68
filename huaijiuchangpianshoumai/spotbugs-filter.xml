@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs include filter: 仅扫描配置类与文件上传控制器。
+  用法: mvn spotbugs:check -Dspotbugs.includeFilterFile=spotbugs-filter.xml
+-->
+<FindBugsFilter>
+    <Match>
+        <Or>
+            <Class name="com.controller.FileController"/>
+            <Class name="com.controller.CommonController"/>
+            <Class name="com.config.MyMetaObjectHandler"/>
+        </Or>
+    </Match>
+</FindBugsFilter>

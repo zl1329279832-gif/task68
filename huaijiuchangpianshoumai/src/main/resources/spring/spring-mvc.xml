@@ -6,6 +6,9 @@
 
     <mvc:default-servlet-handler/>
 
+    <!-- 子上下文(DispatcherServlet)也需要加载 config.properties, 否则 Controller 中的 @Value 无法解析 -->
+    <context:property-placeholder location="classpath:config.properties"/>
+
     <!-- Controller包(自动注入) -->
     <context:component-scan base-package="com.controller"/>
 
