@@ -4,6 +4,7 @@ import com.utils.StringUtil;
 import org.springframework.stereotype.Service;
 import java.lang.reflect.Field;
 import java.util.*;
+import com.baomidou.mybatisplus.mapper.EntityWrapper;
 import com.baomidou.mybatisplus.plugins.Page;
 import com.baomidou.mybatisplus.service.impl.ServiceImpl;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,8 @@ import com.dao.DictionaryDao;
 import com.entity.DictionaryEntity;
 import com.service.DictionaryService;
 import com.entity.view.DictionaryView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 字典 服务实现类
@@ -23,6 +26,8 @@ import com.entity.view.DictionaryView;
 @Service("dictionaryService")
 @Transactional
 public class DictionaryServiceImpl extends ServiceImpl<DictionaryDao, DictionaryEntity> implements DictionaryService {
+
+    private static final Logger logger = LoggerFactory.getLogger(DictionaryServiceImpl.class);
 
     @Override
     public PageUtils queryPage(Map<String,Object> params) {
@@ -124,6 +129,40 @@ public class DictionaryServiceImpl extends ServiceImpl<DictionaryDao, Dictionary
         }
 
         return false;
+    }
+
+    /**
+     * 根据累计积分计算会员等级
+     * 从字典表 dic_code=huiyuandengji_threshold 读取每个等级的积分上限阈值（存在 beizhu 字段中）
+     * code_index 为等级编号，beizhu 为该等级的积分上限
+     * 如字典表无配置则使用默认阈值：1→10000, 2→100000, 3→1000000
+     */
+    @Override
+    public Integer computeHuiyuandengjiLevel(Double totalJifen) {
+        if (totalJifen == null) totalJifen = 0.0;
+        try {
+            List<DictionaryEntity> thresholds = this.selectList(
+                new EntityWrapper<DictionaryEntity>()
+                    .eq("dic_code", "huiyuandengji_threshold")
+                    .orderBy("code_index", true)
+            );
+            if (thresholds != null && !thresholds.isEmpty()) {
+                for (DictionaryEntity t : thresholds) {
+                    double threshold = Double.parseDouble(t.getBeizhu());
+                    if (totalJifen < threshold) {
+                        return t.getCodeIndex();
+                    }
+                }
+                // 积分超过所有阈值，返回最高等级
+                return thresholds.get(thresholds.size() - 1).getCodeIndex();
+            }
+        } catch (Exception e) {
+            logger.warn("读取会员等级阈值字典失败，使用默认值", e);
+        }
+        // 默认阈值 fallback
+        if (totalJifen < 10000) return 1;
+        else if (totalJifen < 100000) return 2;
+        else return 3;
     }
 
 }

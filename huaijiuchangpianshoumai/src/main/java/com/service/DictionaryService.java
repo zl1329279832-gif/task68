@@ -21,4 +21,9 @@ public interface DictionaryService extends IService<DictionaryEntity> {
       * @param obj
       */
      void dictionaryConvert(Object obj, HttpServletRequest request);
+
+    /**
+     * 根据累计积分计算会员等级（阈值从字典表 huiyuandengji_threshold 读取，可配置）
+     */
+     Integer computeHuiyuandengjiLevel(Double totalJifen);
 }
